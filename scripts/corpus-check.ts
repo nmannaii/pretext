@@ -39,6 +39,7 @@ type CorpusReport = {
     deltaText: string
     reasonGuess: string
     oursSumWidth: number
+    oursDomWidth: number
     oursFullWidth: number
     browserDomWidth: number
     browserFullWidth: number
@@ -144,7 +145,7 @@ function printReport(report: CorpusReport): void {
     console.log(`  ours:    ${mismatch.oursContext}`)
     console.log(`  browser: ${mismatch.browserContext}`)
     console.log(
-      `  widths: ours sum/full ${mismatch.oursSumWidth.toFixed(3)}/${mismatch.oursFullWidth.toFixed(3)} | browser dom/full ${mismatch.browserDomWidth.toFixed(3)}/${mismatch.browserFullWidth.toFixed(3)}`,
+      `  widths: ours sum/dom/full ${mismatch.oursSumWidth.toFixed(3)}/${mismatch.oursDomWidth.toFixed(3)}/${mismatch.oursFullWidth.toFixed(3)} | browser dom/full ${mismatch.browserDomWidth.toFixed(3)}/${mismatch.browserFullWidth.toFixed(3)}`,
     )
   } else if (report.firstMismatch !== null && report.firstMismatch !== undefined) {
     console.log(`  first mismatch L${report.firstMismatch.line}`)

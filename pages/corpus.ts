@@ -71,6 +71,7 @@ type CorpusBreakMismatch = {
   deltaText: string
   reasonGuess: string
   oursSumWidth: number
+  oursDomWidth: number
   oursFullWidth: number
   browserDomWidth: number
   browserFullWidth: number
@@ -147,6 +148,19 @@ diagnosticDiv.style.wordWrap = 'break-word'
 diagnosticDiv.style.overflowWrap = 'break-word'
 diagnosticDiv.style.padding = `${PADDING}px`
 document.body.appendChild(diagnosticDiv)
+
+const lineProbeDiv = document.createElement('div')
+lineProbeDiv.style.position = 'absolute'
+lineProbeDiv.style.top = '-99999px'
+lineProbeDiv.style.left = '-99999px'
+lineProbeDiv.style.visibility = 'hidden'
+lineProbeDiv.style.pointerEvents = 'none'
+lineProbeDiv.style.boxSizing = 'border-box'
+lineProbeDiv.style.whiteSpace = 'normal'
+lineProbeDiv.style.wordWrap = 'break-word'
+lineProbeDiv.style.overflowWrap = 'break-word'
+lineProbeDiv.style.padding = `${PADDING}px`
+document.body.appendChild(lineProbeDiv)
 
 const diagnosticGraphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
@@ -230,26 +244,25 @@ function getBrowserLines(
   normalizedText: string,
   font: string,
 ): DiagnosticLine[] {
-  const textNode = div.firstChild
-  if (!(textNode instanceof Text)) return []
-  const safeTextNode: Text = textNode
-
   const units = getDiagnosticUnits(prepared)
-  const unitRange = document.createRange()
-  const lineRange = document.createRange()
   const browserLines: DiagnosticLine[] = []
+  const spans: HTMLSpanElement[] = []
   let currentLine = ''
   let currentStart: number | null = null
   let currentEnd = 0
   let lastTop: number | null = null
 
+  div.textContent = ''
+  for (const unit of units) {
+    const span = document.createElement('span')
+    span.textContent = unit.text
+    div.appendChild(span)
+    spans.push(span)
+  }
+
   function pushBrowserLine(): void {
     if (currentLine.length === 0 || currentStart === null) return
     const content = getLineContent(currentLine, currentEnd)
-    lineRange.setStart(safeTextNode, currentStart)
-    lineRange.setEnd(safeTextNode, currentEnd)
-    const rawDomWidth = lineRange.getBoundingClientRect().width
-    lineRange.setEnd(safeTextNode, content.end)
     browserLines.push({
       text: currentLine,
       contentText: content.text,
@@ -258,16 +271,16 @@ function getBrowserLines(
       contentEnd: content.end,
       fullWidth: measureFullTextWidth(content.text, font),
       rawFullWidth: measureFullTextWidth(normalizedText.slice(currentStart, currentEnd), font),
-      domWidth: lineRange.getBoundingClientRect().width,
-      rawDomWidth,
+      domWidth: measureDomTextWidth(content.text, font, div.dir || 'ltr'),
+      rawDomWidth: measureDomTextWidth(normalizedText.slice(currentStart, currentEnd), font, div.dir || 'ltr'),
     })
   }
 
-  for (const unit of units) {
-    unitRange.setStart(safeTextNode, unit.start)
-    unitRange.setEnd(safeTextNode, unit.end)
-    const rects = unitRange.getClientRects()
-    const rectTop: number | null = rects.length > 0 ? rects[0]!.top : lastTop
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i]!
+    const span = spans[i]!
+    const rect = span.getBoundingClientRect()
+    const rectTop: number | null = rect.width > 0 || rect.height > 0 ? rect.top : lastTop
 
     if (rectTop !== null && lastTop !== null && rectTop > lastTop + 0.5) {
       pushBrowserLine()
@@ -284,7 +297,23 @@ function getBrowserLines(
   }
 
   pushBrowserLine()
+  div.textContent = ''
   return browserLines
+}
+
+function measureDomTextWidth(text: string, font: string, direction: string): number {
+  const span = document.createElement('span')
+  span.style.position = 'absolute'
+  span.style.visibility = 'hidden'
+  span.style.whiteSpace = 'pre'
+  span.style.font = font
+  span.style.direction = direction
+  span.style.unicodeBidi = 'plaintext'
+  span.textContent = text
+  document.body.appendChild(span)
+  const width = span.getBoundingClientRect().width
+  document.body.removeChild(span)
+  return width
 }
 
 function getOurLines(
@@ -442,6 +471,8 @@ function getFirstBreakMismatch(
   contentWidth: number,
   ourLines: DiagnosticLine[],
   browserLines: DiagnosticLine[],
+  font: string,
+  direction: string,
 ): CorpusBreakMismatch | null {
   const maxLines = Math.max(ourLines.length, browserLines.length)
   for (let i = 0; i < maxLines; i++) {
@@ -460,6 +491,7 @@ function getFirstBreakMismatch(
         deltaText: normalizedText.slice(minEnd, maxEnd),
         reasonGuess: classifyBreakMismatch(contentWidth, ours, browser),
         oursSumWidth: ours?.sumWidth ?? 0,
+        oursDomWidth: ours ? measureDomTextWidth(ours.contentText, font, direction) : 0,
         oursFullWidth: ours?.fullWidth ?? 0,
         browserDomWidth: browser?.domWidth ?? 0,
         browserFullWidth: browser?.fullWidth ?? 0,
@@ -535,13 +567,14 @@ function addDiagnostics(
   lineHeight: number,
   contentWidth: number,
   normalizedText: string,
+  direction: string,
 ): CorpusReport {
   if (diagnosticMode !== 'full' || report.status !== 'ready') {
     return report
   }
 
   const ourLines = getOurLines(prepared, normalizedText, contentWidth, lineHeight, font)
-  const browserLines = getBrowserLines(prepared, diagnosticDiv, normalizedText, font)
+  const browserLines = getBrowserLines(prepared, lineProbeDiv, normalizedText, font)
 
   let mismatchCount = 0
   let firstMismatch: CorpusLineMismatch | null = null
@@ -582,7 +615,7 @@ function addDiagnostics(
     browserLineCount: browserLines.length,
     mismatchCount,
     firstMismatch,
-    firstBreakMismatch: getFirstBreakMismatch(normalizedText, contentWidth, ourLines, browserLines),
+    firstBreakMismatch: getFirstBreakMismatch(normalizedText, contentWidth, ourLines, browserLines, font, direction),
     maxLineWidthDrift,
     maxDriftLine,
   }
@@ -607,6 +640,7 @@ function setWidth(width: number): void {
 
   const font = buildFont(currentMeta)
   const lineHeight = getLineHeight(currentMeta)
+  const direction = getDirection(currentMeta)
   const contentWidth = width - PADDING * 2
   const prepared = currentPrepared
   const normalizedText = prepared.segments.join('')
@@ -621,6 +655,7 @@ function setWidth(width: number): void {
   const t0d = performance.now()
   book.style.width = `${width}px`
   diagnosticDiv.style.width = `${width}px`
+  lineProbeDiv.style.width = `${width}px`
   const actualHeight = book.getBoundingClientRect().height
   const msDOM = performance.now() - t0d
 
@@ -634,14 +669,14 @@ function setWidth(width: number): void {
     actualHeight,
     predicted.lineCount,
   )
-  report = addDiagnostics(report, prepared, font, lineHeight, contentWidth, normalizedText)
+  report = addDiagnostics(report, prepared, font, lineHeight, contentWidth, normalizedText, direction)
 
   window.__CORPUS_DEBUG__ = {
     corpusId: currentMeta.id,
     font,
     lineHeight,
     padding: PADDING,
-    direction: getDirection(currentMeta),
+    direction,
     width,
     contentWidth,
     getNormalizedText: () => normalizedText,
@@ -703,6 +738,11 @@ async function loadCorpus(meta: CorpusMeta): Promise<void> {
   diagnosticDiv.style.padding = `${PADDING}px`
   diagnosticDiv.lang = meta.language
   diagnosticDiv.dir = direction
+  lineProbeDiv.style.font = font
+  lineProbeDiv.style.lineHeight = `${lineHeight}px`
+  lineProbeDiv.style.padding = `${PADDING}px`
+  lineProbeDiv.lang = meta.language
+  lineProbeDiv.dir = direction
 
   if ('fonts' in document) {
     await document.fonts.ready
