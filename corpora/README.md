@@ -2,9 +2,10 @@
 
 Starter long-form stress corpora for browser-layout experiments.
 
-These files are not wired into the public benchmark pages yet. They are checked
-in so we have stable canaries when probing languages and punctuation systems
- beyond the current 7680-case browser sweep.
+These files are checked in so we have stable canaries when probing languages and
+punctuation systems beyond the current 7680-case browser sweep. The main corpus
+set is wired into `/corpus` and the long-form rows on `/benchmark`; the status
+pages are the compact source of truth for current results.
 
 Current bundle:
 

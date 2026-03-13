@@ -14,7 +14,7 @@ This log is historical. The current practical steering picture is:
 - Chinese now has a real long-form canary (`祝福`) that is exact at Safari anchors and at Chrome `600 / 800`, but keeps a broader positive one-line field in Chrome at narrower widths.
 - Chinese now has two long-form canaries (`祝福`, `故鄉`) showing the same broad Chrome-positive / Safari-clean split, with real font sensitivity between `Songti SC` and `PingFang SC`.
 - Myanmar still has two real canaries with residual Chrome/Safari disagreement around quote/follower-style classes, so it remains the main unresolved Southeast Asian frontier.
-- Urdu now has a real Nastaliq/Naskh canary (`چغد`) with the same narrow-width negative field in Chrome and Safari, so it is clearly measuring a shaping/context class rather than dirty data or a browser-only quirk.
+- Urdu now has a real Nastaliq/Naskh canary (`چغد`) with the same narrow-width negative field in Chrome and Safari, so it is clearly measuring a shaping/context class rather than dirty data or a browser-only quirk. It remains parked rather than actively tuned.
 - Arabic coarse corpora are clean; the remaining work there is mostly a fine-width edge-fit class, not the old preprocessing/corpus-hygiene problems.
 - Mixed app text still matters because it catches product-shaped classes that books miss, especially soft-hyphen and extractor-sensitive cases.
 

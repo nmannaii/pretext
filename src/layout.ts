@@ -14,7 +14,7 @@
 //     ~0.0002ms per text.
 //
 // i18n: Intl.Segmenter handles CJK (per-character breaking), Thai, Arabic, etc.
-//   Bidi: Unicode Bidirectional Algorithm for mixed LTR/RTL text.
+//   Bidi: simplified rich-path metadata for mixed LTR/RTL custom rendering.
 //   Punctuation merging: "better." measured as one unit (matches CSS behavior).
 //   Trailing whitespace: hangs past line edge without triggering breaks (CSS behavior).
 //   overflow-wrap: pre-measured grapheme widths enable character-level word breaking.
