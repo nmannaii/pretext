@@ -35,6 +35,20 @@ type PositionedLine = {
   text: string
 }
 
+type TextProjection = {
+  headlineLeft: number
+  headlineTop: number
+  headlineFont: string
+  headlineLineHeight: number
+  headlineLines: PositionedLine[]
+  bodyFont: string
+  bodyLineHeight: number
+  bodyLines: PositionedLine[]
+  pullquoteFont: string
+  pullquoteLineHeight: number
+  pullquoteLines: PositionedLine[]
+}
+
 type CircleObstacle = {
   cx: number
   cy: number
@@ -319,6 +333,8 @@ const st: AppState = {
   lastFrameTime: null,
 }
 
+let committedTextProjection: TextProjection | null = null
+
 function syncPool(pool: HTMLDivElement[], count: number, className: string): void {
   while (pool.length < count) {
     const element = document.createElement('div')
@@ -495,6 +511,73 @@ function clearQueuedPointerEvents(): void {
   st.events.pointerUp = null
 }
 
+function positionedLinesEqual(a: PositionedLine[], b: PositionedLine[]): boolean {
+  if (a.length !== b.length) return false
+  for (let index = 0; index < a.length; index++) {
+    const left = a[index]!
+    const right = b[index]!
+    if (
+      left.x !== right.x ||
+      left.y !== right.y ||
+      left.width !== right.width ||
+      left.text !== right.text
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function textProjectionEqual(a: TextProjection | null, b: TextProjection): boolean {
+  return a !== null &&
+    a.headlineLeft === b.headlineLeft &&
+    a.headlineTop === b.headlineTop &&
+    a.headlineFont === b.headlineFont &&
+    a.headlineLineHeight === b.headlineLineHeight &&
+    a.bodyFont === b.bodyFont &&
+    a.bodyLineHeight === b.bodyLineHeight &&
+    a.pullquoteFont === b.pullquoteFont &&
+    a.pullquoteLineHeight === b.pullquoteLineHeight &&
+    positionedLinesEqual(a.headlineLines, b.headlineLines) &&
+    positionedLinesEqual(a.bodyLines, b.bodyLines) &&
+    positionedLinesEqual(a.pullquoteLines, b.pullquoteLines)
+}
+
+function projectTextProjection(projection: TextProjection): void {
+  syncPool(domCache.headlineLines, projection.headlineLines.length, 'headline-line')
+  for (let index = 0; index < projection.headlineLines.length; index++) {
+    const element = domCache.headlineLines[index]!
+    const line = projection.headlineLines[index]!
+    element.textContent = line.text
+    element.style.left = `${projection.headlineLeft + line.x}px`
+    element.style.top = `${projection.headlineTop + line.y}px`
+    element.style.font = projection.headlineFont
+    element.style.lineHeight = `${projection.headlineLineHeight}px`
+  }
+
+  syncPool(domCache.bodyLines, projection.bodyLines.length, 'line')
+  for (let index = 0; index < projection.bodyLines.length; index++) {
+    const element = domCache.bodyLines[index]!
+    const line = projection.bodyLines[index]!
+    element.textContent = line.text
+    element.style.left = `${line.x}px`
+    element.style.top = `${line.y}px`
+    element.style.font = projection.bodyFont
+    element.style.lineHeight = `${projection.bodyLineHeight}px`
+  }
+
+  syncPool(domCache.pullquoteLines, projection.pullquoteLines.length, 'pullquote-line')
+  for (let index = 0; index < projection.pullquoteLines.length; index++) {
+    const element = domCache.pullquoteLines[index]!
+    const line = projection.pullquoteLines[index]!
+    element.textContent = line.text
+    element.style.left = `${line.x}px`
+    element.style.top = `${line.y}px`
+    element.style.font = projection.pullquoteFont
+    element.style.lineHeight = `${projection.pullquoteLineHeight}px`
+  }
+}
+
 function enterTextSelectionMode(): void {
   st.interactionMode = 'text-select'
   clearQueuedPointerEvents()
@@ -527,8 +610,8 @@ function scheduleRender(): void {
 }
 
 stage.addEventListener('pointerdown', event => {
-  if (event.pointerType === 'touch' && isSelectableTextTarget(event.target)) {
-    enterTextSelectionMode()
+  if (isSelectableTextTarget(event.target)) {
+    if (event.pointerType === 'touch') enterTextSelectionMode()
     return
   }
 
@@ -794,8 +877,13 @@ function render(now: number): boolean {
     cursor = result.cursor
   }
 
-  let totalPullquoteLines = 0
-  for (let index = 0; index < pullquoteRects.length; index++) totalPullquoteLines += pullquoteRects[index]!.lines.length
+  const pullquoteLines: PositionedLine[] = []
+  for (let index = 0; index < pullquoteRects.length; index++) {
+    const pullquote = pullquoteRects[index]!
+    for (let lineIndex = 0; lineIndex < pullquote.lines.length; lineIndex++) {
+      pullquoteLines.push(pullquote.lines[lineIndex]!)
+    }
+  }
 
   const hoveredOrbIndex = hitTestOrbs(orbs, pointer.x, pointer.y, activeOrbCount, orbRadiusScale)
   const cursorStyle = drag !== null ? 'grabbing' : hoveredOrbIndex !== -1 ? 'grab' : ''
@@ -807,35 +895,30 @@ function render(now: number): boolean {
   st.events.pointerUp = null
   st.lastFrameTime = stillAnimating ? now : null
 
-  syncPool(domCache.headlineLines, headlineLines.length, 'headline-line')
-  for (let index = 0; index < headlineLines.length; index++) {
-    const element = domCache.headlineLines[index]!
-    const line = headlineLines[index]!
-    if (element.textContent !== line.text) element.textContent = line.text
-    element.style.left = `${gutter}px`
-    element.style.top = `${gutter + line.y}px`
-    element.style.font = headlineFont
-    element.style.lineHeight = `${headlineLineHeight}px`
+  const textProjection: TextProjection = {
+    headlineLeft: gutter,
+    headlineTop: gutter,
+    headlineFont,
+    headlineLineHeight,
+    headlineLines,
+    bodyFont: BODY_FONT,
+    bodyLineHeight: BODY_LINE_HEIGHT,
+    bodyLines: allBodyLines,
+    pullquoteFont: PQ_FONT,
+    pullquoteLineHeight: PQ_LINE_HEIGHT,
+    pullquoteLines,
+  }
+
+  if (!textProjectionEqual(committedTextProjection, textProjection)) {
+    projectTextProjection(textProjection)
+    committedTextProjection = textProjection
   }
 
   domCache.dropCap.style.left = `${column0X}px`
   domCache.dropCap.style.top = `${bodyTop}px`
 
-  syncPool(domCache.bodyLines, allBodyLines.length, 'line')
-  for (let index = 0; index < allBodyLines.length; index++) {
-    const element = domCache.bodyLines[index]!
-    const line = allBodyLines[index]!
-    if (element.textContent !== line.text) element.textContent = line.text
-    element.style.left = `${line.x}px`
-    element.style.top = `${line.y}px`
-    element.style.font = BODY_FONT
-    element.style.lineHeight = `${BODY_LINE_HEIGHT}px`
-  }
-
   syncPool(domCache.pullquoteBoxes, pullquoteRects.length, 'pullquote-box')
-  syncPool(domCache.pullquoteLines, totalPullquoteLines, 'pullquote-line')
 
-  let pullquoteLineIndex = 0
   for (let index = 0; index < pullquoteRects.length; index++) {
     const pullquote = pullquoteRects[index]!
     const boxElement = domCache.pullquoteBoxes[index]!
@@ -843,17 +926,6 @@ function render(now: number): boolean {
     boxElement.style.top = `${pullquote.y}px`
     boxElement.style.width = `${pullquote.w}px`
     boxElement.style.height = `${pullquote.h}px`
-
-    for (let lineIndex = 0; lineIndex < pullquote.lines.length; lineIndex++) {
-      const element = domCache.pullquoteLines[pullquoteLineIndex]!
-      const line = pullquote.lines[lineIndex]!
-      if (element.textContent !== line.text) element.textContent = line.text
-      element.style.left = `${line.x}px`
-      element.style.top = `${line.y}px`
-      element.style.font = PQ_FONT
-      element.style.lineHeight = `${PQ_LINE_HEIGHT}px`
-      pullquoteLineIndex++
-    }
   }
 
   for (let index = 0; index < orbs.length; index++) {
